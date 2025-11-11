@@ -11,3 +11,5 @@ peering parties is NOT using the same ASN in all locations (like, incidentally, 
   - throw the files in your bin directory
   - edit the config file to put your pdb credentials in
   - make sure the config file is protected
+
+Please check requirements.txt for necessary libraries.
