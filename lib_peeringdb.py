@@ -64,7 +64,7 @@ def _pdb_headers(extra=None):
 #  drops the Authorization header on a cross-host redirect.
 PDB_baseurl = "https://www.peeringdb.com/api"
  
-def pdb_set_credentials(arguser, argpass):
+def pdb_set_credentials(arguser,argpass):
     global PDB_baseurl
     if PDB_api_key:
         return                      # API key takes precedence over user/password
