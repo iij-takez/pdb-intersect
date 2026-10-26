@@ -16,25 +16,68 @@
 
 import json
 import requests
+import os
+import sys
 import pprint
 import ipaddress
 import re
 
-#- start anonymous; for full API, use pdb_set_credentials()
+#- PeeringDB API key support
+#  Lookup order (first match wins):
+#    1. environment variable PEERINGDB_API_KEY
+#    2. ~/.peerfinder/peeringdb_api.key   (PeerFinder compatible)
+#    3. ~/.peeringdb_api.key              (PeerFinder compatible)
+#  See https://docs.peeringdb.com/howto/api_keys/
+PDB_KEY_FILES = [
+    os.path.expanduser("~/.peerfinder/peeringdb_api.key"),
+    os.path.expanduser("~/.peeringdb_api.key"),
+]
 
-PDB_baseurl = "https://peeringdb.com/api"
+def _load_pdb_api_key():
+    key = os.environ.get("PEERINGDB_API_KEY", "").strip()
+    if key:
+        return key
+    for path in PDB_KEY_FILES:
+        try:
+            with open(path) as f:
+                key = f.read().strip()
+        except OSError:
+            continue
+        if not key:
+            continue
+        if os.stat(path).st_mode & 0o077:
+            print("WARNING: {} is accessible by group/others; run: chmod 0600 {}".format(path, path),
+                  file=sys.stderr)
+        return key
+    return None
 
+PDB_api_key = _load_pdb_api_key()
 
-def pdb_set_credentials(arguser,argpass):
+def _pdb_headers(extra=None):
+    headers = dict(extra or {})
+    if PDB_api_key:
+        headers["Authorization"] = "Api-Key {}".format(PDB_api_key)
+    return headers
+
+#- start anonymous (or API key, if found); for full API, use pdb_set_credentials()
+#  Use www.peeringdb.com directly: peeringdb.com redirects there, and requests
+#  drops the Authorization header on a cross-host redirect.
+PDB_baseurl = "https://www.peeringdb.com/api"
+ 
+def pdb_set_credentials(arguser, argpass):
     global PDB_baseurl
-    PDB_baseurl = "https://{}:{}@peeringdb.com/api".format(arguser,argpass)
-
+    if PDB_api_key:
+        return                      # API key takes precedence over user/password
+    PDB_baseurl = "https://{}:{}@www.peeringdb.com/api".format(arguser,argpass)
 
 #-
 # Run a reading query
 
 def querypdb(url):
-    pdb_json = requests.get(url=url)
+    pdb_json = requests.get(url=url, headers=_pdb_headers(), timeout=30)
+    if pdb_json.status_code != 200:
+        print("PeeringDB HTTP {}: {}".format(pdb_json.status_code, pdb_json.text[:200]),
+              file=sys.stderr)
     pdb_dict = json.loads(pdb_json.text)
     return pdb_dict
 
@@ -43,12 +86,11 @@ def querypdb(url):
 # Do an update
 
 def updatepdb(url,dict_obj):
-    dict_headers = {
+    dict_headers = _pdb_headers({
             "Accept"       : "application/json",
             "Content-Type" : "application/json",
-            }
-
-    result = requests.put(url=url, data=json.dumps(dict_obj), headers=dict_headers)
+            })
+    result = requests.put(url=url, data=json.dumps(dict_obj), headers=dict_headers, timeout=30)
 
     if not result:
         print("PUT encountered problems:")
